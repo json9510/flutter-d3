@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streamgraph</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: Arial, sans-serif; 
+            background: #f0f0f0;
+        }
+        .streamgraph {
+            width: 100%;
+            height: 100vh;
+        }
+        .layer {
+            opacity: 0.8;
+        }
+        .layer:hover {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <svg class="streamgraph"></svg>
+    
+    <script>
+        // Set up dimensions and margins
+        const margin = { top: 20, right: 30, bottom: 30, left: 40 };
+        const width = window.innerWidth - margin.left - margin.right;
+        const height = window.innerHeight - margin.top - margin.bottom;
+
+        // Create SVG
+        const svg = d3.select(".streamgraph")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom);
+
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Generate sample data
+        const n = 20; // number of layers
+        const m = 200; // number of samples per layer
+        const data = d3.range(n).map(() => 
+            d3.range(m).map((d, i) => ({
+                x: i,
+                y: Math.random() + 0.5 * Math.sin(i * 0.1) + 0.3 * Math.cos(i * 0.05)
+            }))
+        );
+
+        // Stack the data
+        const stack = d3.stack()
+            .keys(d3.range(n))
+            .offset(d3.stackOffsetWiggle)
+            .order(d3.stackOrderInsideOut);
+
+        const stackedData = stack(d3.transpose(data.map(layer => layer.map(d => d.y))));
+
+        // Set up scales
+        const xScale = d3.scaleLinear()
+            .domain([0, m - 1])
+            .range([0, width]);
+
+        const yScale = d3.scaleLinear()
+            .domain(d3.extent(stackedData.flat().flat()))
+            .range([height, 0]);
+
+        // Set up color scale
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+        // Create area generator
+        const area = d3.area()
+            .x((d, i) => xScale(i))
+            .y0(d => yScale(d[0]))
+            .y1(d => yScale(d[1]))
+            .curve(d3.curveBasis);
+
+        // Draw the streamgraph
+        g.selectAll(".layer")
+            .data(stackedData)
+            .enter().append("path")
+            .attr("class", "layer")
+            .attr("d", area)
+            .style("fill", (d, i) => colorScale(i))
+            .on("mouseover", function(event, d) {
+                d3.select(this).style("stroke", "#000").style("stroke-width", "2px");
+            })
+            .on("mouseout", function(event, d) {
+                d3.select(this).style("stroke", "none");
+            });
+
+        // Add animation
+        g.selectAll(".layer")
+            .style("opacity", 0)
+            .transition()
+            .duration(1000)
+            .delay((d, i) => i * 50)
+            .style("opacity", 0.8);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth - margin.left - margin.right;
+            const newHeight = window.innerHeight - margin.top - margin.bottom;
+            
+            svg.attr("width", newWidth + margin.left + margin.right)
+               .attr("height", newHeight + margin.top + margin.bottom);
+            
+            xScale.range([0, newWidth]);
+            yScale.range([newHeight, 0]);
+            
+            g.selectAll(".layer")
+                .attr("d", area);
+        });
+    </script>
+</body>
+</html>

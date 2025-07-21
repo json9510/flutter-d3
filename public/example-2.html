@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zoomable Circle Packing</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: Arial, sans-serif; 
+            background: #222;
+            color: #fff;
+        }
+        .zoomable-circles {
+            width: 100%;
+            height: 100vh;
+            cursor: pointer;
+        }
+        circle {
+            fill-opacity: 0.6;
+            stroke: #fff;
+            stroke-width: 2px;
+            cursor: pointer;
+        }
+        circle:hover {
+            fill-opacity: 0.8;
+            stroke-width: 3px;
+        }
+        text {
+            font: 12px sans-serif;
+            text-anchor: middle;
+            pointer-events: none;
+            fill: #fff;
+        }
+    </style>
+</head>
+<body>
+    <svg class="zoomable-circles"></svg>
+    
+    <script>
+        // Set up dimensions
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        // Create SVG
+        const svg = d3.select(".zoomable-circles")
+            .attr("width", width)
+            .attr("height", height);
+
+        // Create main group for zooming
+        const g = svg.append("g");
+
+        // Generate hierarchical data
+        const data = {
+            name: "root",
+            children: d3.range(8).map(i => ({
+                name: `Group ${i + 1}`,
+                children: d3.range(Math.floor(Math.random() * 15) + 5).map(j => ({
+                    name: `Item ${i + 1}.${j + 1}`,
+                    value: Math.random() * 100 + 10
+                }))
+            }))
+        };
+
+        // Create hierarchy
+        const root = d3.hierarchy(data)
+            .sum(d => d.value)
+            .sort((a, b) => b.value - a.value);
+
+        // Create pack layout
+        const pack = d3.pack()
+            .size([width, height])
+            .padding(3);
+
+        // Calculate positions
+        pack(root);
+
+        // Color scale
+        const color = d3.scaleOrdinal(d3.schemeSet3);
+
+        // Current focus node
+        let focus = root;
+        let view;
+
+        // Create circles
+        const circle = g.selectAll("circle")
+            .data(root.descendants())
+            .join("circle")
+            .attr("fill", d => d.children ? color(d.depth) : "#69b3a2")
+            .attr("pointer-events", d => !d.children ? "none" : null)
+            .on("mouseover", function() { d3.select(this).attr("stroke", "#000"); })
+            .on("mouseout", function() { d3.select(this).attr("stroke", "#fff"); })
+            .on("click", (event, d) => {
+                if (focus !== d) {
+                    zoom(event, d);
+                    event.stopPropagation();
+                }
+            });
+
+        // Create text labels
+        const text = g.selectAll("text")
+            .data(root.descendants())
+            .join("text")
+            .style("fill-opacity", d => d.parent === root ? 1 : 0)
+            .style("display", d => d.parent === root ? "inline" : "none")
+            .text(d => d.data.name);
+
+        // Create zoom behavior
+        const zoomBehavior = d3.zoom()
+            .extent([[0, 0], [width, height]])
+            .scaleExtent([1, 8])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+
+        svg.call(zoomBehavior);
+
+        // Initial zoom
+        zoomTo([root.x, root.y, root.r * 2]);
+
+        function zoomTo(v) {
+            const k = width / v[2];
+            view = v;
+            
+            text.attr("transform", d => `translate(${(d.x - v[0]) * k},${(d.y - v[1]) * k})`);
+            circle.attr("transform", d => `translate(${(d.x - v[0]) * k},${(d.y - v[1]) * k})`);
+            circle.attr("r", d => d.r * k);
+        }
+
+        function zoom(event, d) {
+            const focus0 = focus;
+            focus = d;
+
+            const transition = svg.transition()
+                .duration(750)
+                .tween("zoom", () => {
+                    const i = d3.interpolateZoom(view, [focus.x, focus.y, focus.r * 2]);
+                    return t => zoomTo(i(t));
+                });
+
+            text
+                .filter(function(d) { return d.parent === focus || this.style.display === "inline"; })
+                .transition(transition)
+                .style("fill-opacity", d => d.parent === focus ? 1 : 0)
+                .on("start", function(d) { if (d.parent === focus) this.style.display = "inline"; })
+                .on("end", function(d) { if (d.parent !== focus) this.style.display = "none"; });
+        }
+
+        // Click outside to zoom out
+        svg.on("click", (event) => {
+            zoom(event, root);
+        });
+
+        // Add initial animation
+        circle
+            .attr("r", 0)
+            .transition()
+            .duration(1000)
+            .delay((d, i) => i * 10)
+            .attr("r", d => d.r);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth;
+            const newHeight = window.innerHeight;
+            
+            svg.attr("width", newWidth).attr("height", newHeight);
+            
+            pack.size([newWidth, newHeight]);
+            pack(root);
+            
+            zoomTo([focus.x, focus.y, focus.r * 2]);
+        });
+    </script>
+</body>
+</html>
